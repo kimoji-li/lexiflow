@@ -271,7 +271,7 @@ export default function Home() {
                           <button key={item.line} onClick={() => speak(item.line)} title="点击朗读">
                             <b>{String(index + 1).padStart(2, '0')}</b>
                             <strong>“{item.line}”</strong>
-                            <small><i>中文释义</i>{item.meaning}</small>
+                            <small><i>整句中文</i>{item.meaning}</small>
                             <span>▶</span>
                           </button>
                         ))}
@@ -291,7 +291,7 @@ export default function Home() {
                     )}
                     <div className="basic-note compact">
                       <span>基础词条 · 使用频率 #{current.rank}</span>
-                      <p>第 2,000–10,000 名已补充三条可朗读英语用例和中文释义；词义关系仅显示词典中可核实的结果。</p>
+                      <p>第 2,000–10,000 名已补充三条可朗读英语用例和对应的整句中文翻译；词义关系仅显示词典中可核实的结果。</p>
                     </div>
                   </>
                 ) : (
@@ -380,7 +380,7 @@ export default function Home() {
                 <div className="row-meaning">
                   <strong>{item.meaning}</strong>
                   <p>{item.example || `使用频率 #${item.rank}`}</p>
-                  <small>{item.basic && item.enriched ? `中文释义：${item.spoken[0]?.meaning}` : item.basic ? `使用频率 #${item.rank} · 点击单词查看与朗读` : item.translation}</small>
+                  <small>{item.basic && item.enriched ? `整句中文：${item.spoken[0]?.meaning}` : item.basic ? `使用频率 #${item.rank} · 点击单词查看与朗读` : item.translation}</small>
                 </div>
                 <div className="row-links">
                   {item.basic && item.part === 'adjective' && item.enriched ? (
