@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build LexiFlow's compact 8,000-word base library from ECDICT."""
+"""Build LexiFlow's compact 20,000-word base library from ECDICT."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from pathlib import Path
 
 
 WORD_RE = re.compile(r"^[a-z][a-z'-]{0,23}$")
+TARGET_COUNT = 20_000
+SPOKEN_COUNT = 4_000
 POS_NAMES = {
     "n": "noun",
     "v": "verb",
@@ -70,7 +72,9 @@ def level_for(rank: int) -> str:
         return "B1"
     if rank <= 7000:
         return "B2"
-    return "C1"
+    if rank <= 16000:
+        return "C1"
+    return "C2"
 
 
 def main() -> None:
@@ -105,7 +109,7 @@ def main() -> None:
             candidates.append((score, row))
 
     candidates.sort(key=lambda item: (item[0], item[1]["word"]))
-    selected = candidates[:8200]
+    selected = candidates[: TARGET_COUNT + 1000]
 
     entries: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -117,7 +121,7 @@ def main() -> None:
         rank = len(entries) + 1
         source_tags = row.get("tag", "").lower().split()
         tags: list[str] = []
-        if rank <= 4000:
+        if rank <= SPOKEN_COUNT:
             tags.append("口语高频")
         if "ielts" in source_tags:
             tags.append("IELTS")
@@ -131,21 +135,13 @@ def main() -> None:
                 "meaning": common_meaning(row.get("translation", "")),
                 "rank": rank,
                 "basic": True,
-                "note": "",
-                "spoken": [],
-                "example": "",
-                "translation": "",
-                "similar": [],
-                "synonyms": [],
-                "antonyms": [],
-                "phrases": [],
             }
         )
-        if len(entries) == 8000:
+        if len(entries) == TARGET_COUNT:
             break
 
-    if len(entries) != 8000:
-        raise SystemExit(f"Expected 8000 entries, got {len(entries)}")
+    if len(entries) != TARGET_COUNT:
+        raise SystemExit(f"Expected {TARGET_COUNT} entries, got {len(entries)}")
 
     output.write_text(json.dumps(entries, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     notice.write_text(

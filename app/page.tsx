@@ -1,10 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { libraryStats, words as curatedWords, type WordEntry } from './words';
 
 type Mode = 'card' | 'list';
 type Filter = '全部' | '口语高频' | 'IELTS' | '已收藏';
+type BasicWordPayload = Pick<WordEntry, 'word' | 'ipa' | 'part' | 'level' | 'tags' | 'meaning' | 'basic' | 'rank'>;
+
+const LIBRARY_SIZE = 20000;
+const LIST_PAGE_SIZE = 120;
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>('card');
@@ -16,7 +20,9 @@ export default function Home() {
   const [known, setKnown] = useState<string[]>([]);
   const [saved, setSaved] = useState<string[]>([]);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
-  const [displayLimit, setDisplayLimit] = useState(120);
+  const [listPage, setListPage] = useState(0);
+  const [listJump, setListJump] = useState('');
+  const [jumpedSequence, setJumpedSequence] = useState<number | null>(null);
   const touchStart = useRef<number | null>(null);
 
   useEffect(() => {
@@ -32,13 +38,24 @@ export default function Home() {
     fetch(dataUrl)
       .then((response) => {
         if (!response.ok) throw new Error(`Unable to load vocabulary: ${response.status}`);
-        return response.json() as Promise<WordEntry[]>;
+        return response.json() as Promise<BasicWordPayload[]>;
       })
       .then((basicWords) => {
         const curatedSet = new Set(curatedWords.map((item) => item.word));
+        const normalized = basicWords.map((item): WordEntry => ({
+          ...item,
+          note: '',
+          spoken: [],
+          example: '',
+          translation: '',
+          similar: [],
+          synonyms: [],
+          antonyms: [],
+          phrases: [],
+        }));
         const combined = [
           ...curatedWords,
-          ...basicWords.filter((item) => !curatedSet.has(item.word)).slice(0, 8000 - curatedWords.length),
+          ...normalized.filter((item) => !curatedSet.has(item.word)).slice(0, LIBRARY_SIZE - curatedWords.length),
         ];
         setAllWords(combined);
         if (fromUrl && combined.some((item) => item.word === fromUrl)) setSelected(fromUrl);
@@ -62,7 +79,22 @@ export default function Home() {
   const currentIndex = Math.max(0, visibleWords.findIndex((item) => item.word === selected));
   const current = visibleWords[currentIndex] ?? allWords[0] ?? curatedWords[0];
 
-  useEffect(() => setDisplayLimit(120), [filter, query, mode]);
+  useEffect(() => {
+    setListPage(0);
+    setListJump('');
+    setJumpedSequence(null);
+  }, [filter, query, mode]);
+
+  const listStart = listPage * LIST_PAGE_SIZE;
+  const listEnd = Math.min(listStart + LIST_PAGE_SIZE, visibleWords.length);
+  const listPageCount = Math.max(1, Math.ceil(visibleWords.length / LIST_PAGE_SIZE));
+
+  useEffect(() => {
+    if (mode !== 'list' || jumpedSequence === null) return;
+    requestAnimationFrame(() => {
+      document.getElementById(`word-row-${jumpedSequence}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [jumpedSequence, listPage, mode]);
 
   useEffect(() => {
     if (visibleWords.length && !visibleWords.some((item) => item.word === selected)) {
@@ -127,6 +159,22 @@ export default function Home() {
     setSelected(word);
     setMode('card');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function jumpToSequence(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const requested = Number.parseInt(listJump, 10);
+    if (!Number.isFinite(requested) || !visibleWords.length) return;
+    const target = Math.min(visibleWords.length, Math.max(1, requested));
+    setListJump(String(target));
+    setListPage(Math.floor((target - 1) / LIST_PAGE_SIZE));
+    setJumpedSequence(target);
+  }
+
+  function changeListPage(page: number) {
+    setListPage(Math.min(listPageCount - 1, Math.max(0, page)));
+    setJumpedSequence(null);
+    requestAnimationFrame(() => document.getElementById('list-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
   return (
@@ -262,11 +310,31 @@ export default function Home() {
           </>
         ) : (
           <div className="list-view">
+            <div className="list-tools" id="list-tools">
+              <form className="sequence-jump" onSubmit={jumpToSequence}>
+                <label htmlFor="sequence-number">序号跳转</label>
+                <input
+                  id="sequence-number"
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max={visibleWords.length}
+                  value={listJump}
+                  onChange={(event) => setListJump(event.target.value)}
+                  placeholder={`输入 1–${visibleWords.length}`}
+                  aria-label={`输入当前列表中的单词序号，范围 1 到 ${visibleWords.length}`}
+                />
+                <button type="submit" disabled={!listJump}>定位</button>
+              </form>
+              <span className="list-range">当前显示 {listStart + 1}–{listEnd} / {visibleWords.length}</span>
+            </div>
             <div className="list-head"><span>单词 / 音标</span><span>常用义与口语例句</span><span>词义连接</span><span>状态</span></div>
-            {visibleWords.slice(0, displayLimit).map((item, index) => (
-              <article className="word-row" key={item.word}>
+            {visibleWords.slice(listStart, listEnd).map((item, index) => {
+              const sequence = listStart + index + 1;
+              return (
+              <article id={`word-row-${sequence}`} className={`word-row ${jumpedSequence === sequence ? 'is-jump-target' : ''}`} key={item.word}>
                 <div className="row-word">
-                  <b>{String(index + 1).padStart(2, '0')}</b>
+                  <b>{String(sequence).padStart(String(visibleWords.length).length, '0')}</b>
                   <button onClick={() => openWord(item.word)}>{item.word}</button>
                   <span>{item.ipa} · {item.level}</span>
                 </div>
@@ -288,20 +356,23 @@ export default function Home() {
                   <span className={known.includes(item.word) ? 'known' : ''}>{known.includes(item.word) ? '已学' : '待学'}</span>
                 </div>
               </article>
-            ))}
-            {displayLimit < visibleWords.length && (
-              <button className="load-more" onClick={() => setDisplayLimit((value) => value + 120)}>
-                再显示 {Math.min(120, visibleWords.length - displayLimit)} 个
-              </button>
+              );
+            })}
+            {listPageCount > 1 && (
+              <nav className="list-pagination" aria-label="速览分页">
+                <button onClick={() => changeListPage(listPage - 1)} disabled={listPage === 0}>← 上一组</button>
+                <span>第 {listPage + 1} / {listPageCount} 组</span>
+                <button onClick={() => changeListPage(listPage + 1)} disabled={listPage >= listPageCount - 1}>下一组 →</button>
+              </nav>
             )}
           </div>
         )}
       </section>
 
       <aside className="library-strip" aria-label="目标词库构成">
-        <div><span>当前词库</span><strong>8,000</strong><small>按英语母语环境中的实用频率整理</small></div>
+        <div><span>当前词库</span><strong>20,000</strong><small>按英语母语环境中的实用频率整理</small></div>
         {libraryStats.map((item) => <div key={item.label}><span>{item.label}</span><strong>{item.count}</strong><small>目标词条</small></div>)}
-        <p>已收录8,000个基础词条，并保留重点单词的精编口语内容。</p>
+        <p>已收录20,000个基础词条，并保留重点单词的精编口语内容。</p>
       </aside>
     </main>
   );

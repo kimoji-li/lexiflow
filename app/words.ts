@@ -118,6 +118,6 @@ export const words: WordEntry[] = [
 
 export const libraryStats = [
   { label: '高频核心', count: '3,000' },
-  { label: '日常进阶', count: '3,000' },
-  { label: '母语扩展', count: '2,000' },
+  { label: '日常进阶', count: '5,000' },
+  { label: '母语扩展', count: '12,000' },
 ];

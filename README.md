@@ -4,7 +4,7 @@
 
 ## 词库
 
-- 8,000 个按英语使用频率整理的基础词条
+- 20,000 个按英语使用频率整理的基础词条
 - 保留重点单词的精编口语用法、例句和短语
 - 基础数据派生自 [ECDICT](https://github.com/skywind3000/ECDICT)，按 MIT License 使用
 - 运行 `scripts/generate_basic_words.py /path/to/ecdict.csv` 可重新生成基础词库
