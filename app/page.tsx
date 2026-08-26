@@ -5,7 +5,8 @@ import { libraryStats, words as curatedWords, type WordEntry } from './words';
 
 type Mode = 'card' | 'list';
 type Filter = '全部' | '口语高频' | 'IELTS' | '已收藏';
-type BasicWordPayload = Pick<WordEntry, 'word' | 'ipa' | 'part' | 'level' | 'tags' | 'meaning' | 'basic' | 'rank'>;
+type BasicWordPayload = Pick<WordEntry, 'word' | 'ipa' | 'part' | 'level' | 'tags' | 'meaning' | 'basic' | 'rank'>
+  & Partial<Pick<WordEntry, 'example' | 'synonyms' | 'antonyms' | 'enriched'>>;
 
 const LIBRARY_SIZE = 25000;
 const LIST_PAGE_SIZE = 120;
@@ -47,11 +48,11 @@ export default function Home() {
           ...item,
           note: '',
           spoken: [],
-          example: '',
+          example: item.example ?? '',
           translation: '',
           similar: [],
-          synonyms: [],
-          antonyms: [],
+          synonyms: item.synonyms ?? [],
+          antonyms: item.antonyms ?? [],
           phrases: [],
         }));
         const combined = [
@@ -258,10 +259,38 @@ export default function Home() {
               </div>
 
               {current.basic ? (
-                <div className="basic-note">
-                  <span>基础词条 · 使用频率 #{current.rank}</span>
-                  <p>当前提供核心词义、音标和美式朗读，适合快速浏览与自测。</p>
-                </div>
+                current.enriched ? (
+                  <>
+                    <section className="basic-speaking">
+                      <div>
+                        <span className="section-label">常用口语句</span>
+                        <button onClick={() => speak(current.example)} aria-label="播放口语例句">▶ 朗读</button>
+                      </div>
+                      <p>“{current.example}”</p>
+                    </section>
+                    {current.part === 'adjective' && (
+                      <div className="relation-grid basic-relations">
+                        <section>
+                          <span className="section-label">近义词</span>
+                          {current.synonyms.length ? <div className="word-pills good">{current.synonyms.map((item) => <span key={item}>{item}</span>)}</div> : <small>暂无可靠近义词</small>}
+                        </section>
+                        <section>
+                          <span className="section-label">反义词</span>
+                          {current.antonyms.length ? <div className="word-pills contrast">{current.antonyms.map((item) => <span key={item}>{item}</span>)}</div> : <small>暂无可靠反义词</small>}
+                        </section>
+                      </div>
+                    )}
+                    <div className="basic-note compact">
+                      <span>基础词条 · 使用频率 #{current.rank}</span>
+                      <p>第 2,000–10,000 名已补充可朗读的英语用例；词义关系仅显示词典中可核实的结果。</p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="basic-note">
+                    <span>基础词条 · 使用频率 #{current.rank}</span>
+                    <p>当前提供核心词义、音标和美式朗读，适合快速浏览与自测。</p>
+                  </div>
+                )
               ) : (
                 <>
                   <blockquote>
@@ -341,11 +370,13 @@ export default function Home() {
                 </div>
                 <div className="row-meaning">
                   <strong>{item.meaning}</strong>
-                  <p>{item.basic ? `使用频率 #${item.rank}` : item.example}</p>
-                  <small>{item.basic ? '基础词条 · 点击单词查看与朗读' : item.translation}</small>
+                  <p>{item.example || `使用频率 #${item.rank}`}</p>
+                  <small>{item.basic ? `使用频率 #${item.rank} · 点击单词查看与朗读` : item.translation}</small>
                 </div>
                 <div className="row-links">
-                  {item.basic ? (
+                  {item.basic && item.part === 'adjective' && item.enriched ? (
+                    <><p><b>近</b>{item.synonyms.slice(0, 2).join(' · ') || '暂无可靠词'}</p><p><b>反</b>{item.antonyms.slice(0, 2).join(' · ') || '暂无可靠词'}</p></>
+                  ) : item.basic ? (
                     <><p><b>级</b>{item.level}</p><p><b>类</b>{item.tags.join(' · ') || '母语扩展'}</p></>
                   ) : (
                     <><p><b>近</b>{item.synonyms.slice(0, 2).join(' · ')}</p><p><b>反</b>{item.antonyms.slice(0, 2).join(' · ')}</p><p><b>搭</b>{item.phrases[0]?.phrase}</p></>
@@ -378,3 +409,4 @@ export default function Home() {
     </main>
   );
 }
+
