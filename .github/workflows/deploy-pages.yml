@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Generate the 20,000-word library
+      - name: Generate the 25,000-word library
         shell: bash
         run: |
           git clone --depth 1 https://github.com/skywind3000/ECDICT.git "$RUNNER_TEMP/ecdict"

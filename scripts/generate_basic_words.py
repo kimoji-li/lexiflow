@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build LexiFlow's compact 20,000-word base library from ECDICT."""
+"""Build LexiFlow's compact 25,000-word base library from ECDICT."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 WORD_RE = re.compile(r"^[a-z][a-z'-]{0,23}$")
-TARGET_COUNT = 20_000
+TARGET_COUNT = 25_000
 SPOKEN_COUNT = 4_000
 POS_NAMES = {
     "n": "noun",

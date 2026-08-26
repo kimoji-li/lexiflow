@@ -7,7 +7,7 @@ type Mode = 'card' | 'list';
 type Filter = '全部' | '口语高频' | 'IELTS' | '已收藏';
 type BasicWordPayload = Pick<WordEntry, 'word' | 'ipa' | 'part' | 'level' | 'tags' | 'meaning' | 'basic' | 'rank'>;
 
-const LIBRARY_SIZE = 20000;
+const LIBRARY_SIZE = 25000;
 const LIST_PAGE_SIZE = 120;
 
 export default function Home() {
@@ -370,9 +370,9 @@ export default function Home() {
       </section>
 
       <aside className="library-strip" aria-label="目标词库构成">
-        <div><span>当前词库</span><strong>20,000</strong><small>按英语母语环境中的实用频率整理</small></div>
+        <div><span>当前词库</span><strong>25,000</strong><small>按英语母语环境中的实用频率整理</small></div>
         {libraryStats.map((item) => <div key={item.label}><span>{item.label}</span><strong>{item.count}</strong><small>目标词条</small></div>)}
-        <p>已收录20,000个基础词条，并保留重点单词的精编口语内容。</p>
+        <p>已收录25,000个基础词条，并保留重点单词的精编口语内容。</p>
       </aside>
     </main>
   );
