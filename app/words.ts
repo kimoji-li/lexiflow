@@ -14,6 +14,7 @@ export type WordEntry = {
   antonyms: string[];
   phrases: { phrase: string; meaning: string }[];
   basic?: boolean;
+  enriched?: boolean;
   rank?: number;
 };
 
@@ -121,3 +122,4 @@ export const libraryStats = [
   { label: '日常进阶', count: '5,000' },
   { label: '母语扩展', count: '17,000' },
 ];
+
