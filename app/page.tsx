@@ -35,7 +35,8 @@ export default function Home() {
     setSaved(JSON.parse(localStorage.getItem('lexiflow-saved') ?? '[]'));
     const fromUrl = new URLSearchParams(window.location.search).get('word');
     const dataUrl = new URL('data/words-basic.json', window.location.href);
-    fetch(dataUrl)
+    dataUrl.searchParams.set('library', String(LIBRARY_SIZE));
+    fetch(dataUrl, { cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error(`Unable to load vocabulary: ${response.status}`);
         return response.json() as Promise<BasicWordPayload[]>;
