@@ -1,3 +1,8 @@
 LexiFlow basic vocabulary data is derived from ECDICT.
 Source: https://github.com/skywind3000/ECDICT
 License: MIT License, Copyright (c) 2025 Linwei
+
+LexiFlow examples and lexical relations are derived from Open English WordNet 2024.
+Source: https://en-word.net/
+License: Creative Commons Attribution 4.0 International
+
