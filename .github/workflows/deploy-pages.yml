@@ -33,6 +33,8 @@ jobs:
         shell: bash
         run: |
           git clone --depth 1 https://github.com/skywind3000/ECDICT.git "$RUNNER_TEMP/ecdict"
+          python -m pip install wn==1.1.1
+          python -c "import wn; wn.download('oewn:2024')"
           python scripts/generate_basic_words.py "$RUNNER_TEMP/ecdict/ecdict.csv"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -44,3 +46,4 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+
