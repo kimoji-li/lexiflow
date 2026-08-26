@@ -6,7 +6,7 @@ import { libraryStats, words as curatedWords, type WordEntry } from './words';
 type Mode = 'card' | 'list';
 type Filter = '全部' | '口语高频' | 'IELTS' | '已收藏';
 type BasicWordPayload = Pick<WordEntry, 'word' | 'ipa' | 'part' | 'level' | 'tags' | 'meaning' | 'basic' | 'rank'>
-  & Partial<Pick<WordEntry, 'example' | 'synonyms' | 'antonyms' | 'enriched'>>;
+  & Partial<Pick<WordEntry, 'example' | 'spoken' | 'synonyms' | 'antonyms' | 'enriched'>>;
 
 const LIBRARY_SIZE = 25000;
 const LIST_PAGE_SIZE = 120;
@@ -47,7 +47,7 @@ export default function Home() {
         const normalized = basicWords.map((item): WordEntry => ({
           ...item,
           note: '',
-          spoken: [],
+          spoken: item.spoken ?? [],
           example: item.example ?? '',
           translation: '',
           similar: [],
@@ -73,7 +73,7 @@ export default function Home() {
     return allWords.filter((item) => {
       const matchesFilter = filter === '全部'
         || (filter === '已收藏' ? saved.includes(item.word) : item.tags.includes(filter));
-      const haystack = [item.word, item.meaning, item.example, ...item.synonyms, ...item.phrases.map((p) => p.phrase)].join(' ').toLowerCase();
+      const haystack = [item.word, item.meaning, item.example, ...item.spoken.flatMap((example) => [example.line, example.meaning]), ...item.synonyms, ...item.phrases.map((p) => p.phrase)].join(' ').toLowerCase();
       return matchesFilter && (!text || haystack.includes(text));
     });
   }, [allWords, filter, query, saved]);
@@ -262,11 +262,20 @@ export default function Home() {
                 current.enriched ? (
                   <>
                     <section className="basic-speaking">
-                      <div>
-                        <span className="section-label">常用口语句</span>
-                        <button onClick={() => speak(current.example)} aria-label="播放口语例句">▶ 朗读</button>
+                      <div className="basic-speaking-head">
+                        <span className="section-label">常用口语句 · 3</span>
+                        <small>点击句子即可朗读</small>
                       </div>
-                      <p>“{current.example}”</p>
+                      <div className="basic-example-list">
+                        {current.spoken.map((item, index) => (
+                          <button key={item.line} onClick={() => speak(item.line)} title="点击朗读">
+                            <b>{String(index + 1).padStart(2, '0')}</b>
+                            <strong>“{item.line}”</strong>
+                            <small><i>中文释义</i>{item.meaning}</small>
+                            <span>▶</span>
+                          </button>
+                        ))}
+                      </div>
                     </section>
                     {current.part === 'adjective' && (
                       <div className="relation-grid basic-relations">
@@ -282,7 +291,7 @@ export default function Home() {
                     )}
                     <div className="basic-note compact">
                       <span>基础词条 · 使用频率 #{current.rank}</span>
-                      <p>第 2,000–10,000 名已补充可朗读的英语用例；词义关系仅显示词典中可核实的结果。</p>
+                      <p>第 2,000–10,000 名已补充三条可朗读英语用例和中文释义；词义关系仅显示词典中可核实的结果。</p>
                     </div>
                   </>
                 ) : (
@@ -371,7 +380,7 @@ export default function Home() {
                 <div className="row-meaning">
                   <strong>{item.meaning}</strong>
                   <p>{item.example || `使用频率 #${item.rank}`}</p>
-                  <small>{item.basic ? `使用频率 #${item.rank} · 点击单词查看与朗读` : item.translation}</small>
+                  <small>{item.basic && item.enriched ? `中文释义：${item.spoken[0]?.meaning}` : item.basic ? `使用频率 #${item.rank} · 点击单词查看与朗读` : item.translation}</small>
                 </div>
                 <div className="row-links">
                   {item.basic && item.part === 'adjective' && item.enriched ? (
