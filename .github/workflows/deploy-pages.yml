@@ -29,6 +29,11 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Generate the 8,000-word library
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/skywind3000/ECDICT.git "$RUNNER_TEMP/ecdict"
+          python scripts/generate_basic_words.py "$RUNNER_TEMP/ecdict/ecdict.csv"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
         env:

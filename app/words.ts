@@ -13,6 +13,8 @@ export type WordEntry = {
   synonyms: string[];
   antonyms: string[];
   phrases: { phrase: string; meaning: string }[];
+  basic?: boolean;
+  rank?: number;
 };
 
 export const words: WordEntry[] = [
@@ -115,7 +117,7 @@ export const words: WordEntry[] = [
 ];
 
 export const libraryStats = [
-  { label: '生活口语', count: '8,000' },
-  { label: '雅思核心', count: '4,000' },
-  { label: '母语进阶', count: '3,000' },
+  { label: '高频核心', count: '3,000' },
+  { label: '日常进阶', count: '3,000' },
+  { label: '母语扩展', count: '2,000' },
 ];

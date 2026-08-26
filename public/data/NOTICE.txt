@@ -1,0 +1,3 @@
+LexiFlow basic vocabulary data is derived from ECDICT.
+Source: https://github.com/skywind3000/ECDICT
+License: MIT License, Copyright (c) 2025 Linwei

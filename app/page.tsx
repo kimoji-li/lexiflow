@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { libraryStats, words } from './words';
+import { libraryStats, words as curatedWords, type WordEntry } from './words';
 
 type Mode = 'card' | 'list';
 type Filter = '全部' | '口语高频' | 'IELTS' | '已收藏';
@@ -10,10 +10,13 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>('card');
   const [filter, setFilter] = useState<Filter>('全部');
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState(words[0].word);
+  const [allWords, setAllWords] = useState<WordEntry[]>(curatedWords);
+  const [selected, setSelected] = useState(curatedWords[0].word);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [known, setKnown] = useState<string[]>([]);
   const [saved, setSaved] = useState<string[]>([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(true);
+  const [displayLimit, setDisplayLimit] = useState(120);
   const touchStart = useRef<number | null>(null);
 
   useEffect(() => {
@@ -25,21 +28,41 @@ export default function Home() {
     setKnown(JSON.parse(localStorage.getItem('lexiflow-known') ?? '[]'));
     setSaved(JSON.parse(localStorage.getItem('lexiflow-saved') ?? '[]'));
     const fromUrl = new URLSearchParams(window.location.search).get('word');
-    if (fromUrl && words.some((item) => item.word === fromUrl)) setSelected(fromUrl);
+    const dataUrl = new URL('data/words-basic.json', window.location.href);
+    fetch(dataUrl)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Unable to load vocabulary: ${response.status}`);
+        return response.json() as Promise<WordEntry[]>;
+      })
+      .then((basicWords) => {
+        const curatedSet = new Set(curatedWords.map((item) => item.word));
+        const combined = [
+          ...curatedWords,
+          ...basicWords.filter((item) => !curatedSet.has(item.word)).slice(0, 8000 - curatedWords.length),
+        ];
+        setAllWords(combined);
+        if (fromUrl && combined.some((item) => item.word === fromUrl)) setSelected(fromUrl);
+      })
+      .catch(() => {
+        if (fromUrl && curatedWords.some((item) => item.word === fromUrl)) setSelected(fromUrl);
+      })
+      .finally(() => setLoadingLibrary(false));
   }, []);
 
   const visibleWords = useMemo(() => {
     const text = query.trim().toLowerCase();
-    return words.filter((item) => {
+    return allWords.filter((item) => {
       const matchesFilter = filter === '全部'
         || (filter === '已收藏' ? saved.includes(item.word) : item.tags.includes(filter));
       const haystack = [item.word, item.meaning, item.example, ...item.synonyms, ...item.phrases.map((p) => p.phrase)].join(' ').toLowerCase();
       return matchesFilter && (!text || haystack.includes(text));
     });
-  }, [filter, query, saved]);
+  }, [allWords, filter, query, saved]);
 
   const currentIndex = Math.max(0, visibleWords.findIndex((item) => item.word === selected));
-  const current = visibleWords[currentIndex] ?? words[0];
+  const current = visibleWords[currentIndex] ?? allWords[0] ?? curatedWords[0];
+
+  useEffect(() => setDisplayLimit(120), [filter, query, mode]);
 
   useEffect(() => {
     if (visibleWords.length && !visibleWords.some((item) => item.word === selected)) {
@@ -138,7 +161,7 @@ export default function Home() {
       <section id="main" className="study-wrap">
         <div className="study-meta">
           <div>
-            <span className="eyebrow">{filter === '全部' ? 'DAILY WORDS' : filter.toUpperCase()} · {visibleWords.length} WORDS</span>
+            <span className="eyebrow">{loadingLibrary ? '正在载入词库' : `${filter === '全部' ? 'DAILY WORDS' : filter.toUpperCase()} · ${visibleWords.length} WORDS`}</span>
             <h1>{mode === 'card' ? '今天继续，把好词用进对话里。' : '一眼多看，快速建立词义连接。'}</h1>
           </div>
           <div className="mode-switch" aria-label="背诵模式">
@@ -166,7 +189,7 @@ export default function Home() {
               }}
             >
               <div className="card-topline">
-                <div className="chips">{current.tags.map((tag) => <span key={tag}>{tag}</span>)}<span>{current.level}</span></div>
+                <div className="chips">{current.tags.map((tag) => <span key={tag}>{tag}</span>)}{current.basic && <span>基础词条</span>}<span>{current.level}</span></div>
                 <button className={`text-button ${saved.includes(current.word) ? 'is-saved' : ''}`} onClick={() => toggleSaved(current.word)}>
                   {saved.includes(current.word) ? '♥ 已收藏' : '♡ 收藏'}
                 </button>
@@ -185,39 +208,48 @@ export default function Home() {
                 <p className="definition">{current.meaning}</p>
               </div>
 
-              <blockquote>
-                “{current.example}”
-                <span>{current.translation}</span>
-              </blockquote>
+              {current.basic ? (
+                <div className="basic-note">
+                  <span>基础词条 · 使用频率 #{current.rank}</span>
+                  <p>当前提供核心词义、音标和美式朗读，适合快速浏览与自测。</p>
+                </div>
+              ) : (
+                <>
+                  <blockquote>
+                    “{current.example}”
+                    <span>{current.translation}</span>
+                  </blockquote>
 
-              <div className="spoken-note">
-                <span>口语中的用法</span>
-                <div className="spoken-copy">
-                  <p>{current.note}</p>
-                  <div className="spoken-examples">
-                    {current.spoken.map((item) => (
-                      <button key={item.line} onClick={() => speak(item.line)} title="点击朗读">
-                        <strong>{item.line}</strong><small>{item.meaning}</small><i>▶</i>
-                      </button>
-                    ))}
+                  <div className="spoken-note">
+                    <span>口语中的用法</span>
+                    <div className="spoken-copy">
+                      <p>{current.note}</p>
+                      <div className="spoken-examples">
+                        {current.spoken.map((item) => (
+                          <button key={item.line} onClick={() => speak(item.line)} title="点击朗读">
+                            <strong>{item.line}</strong><small>{item.meaning}</small><i>▶</i>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="relation-grid">
-                <section><span className="section-label">形近词</span><div className="word-pills">{current.similar.map((item) => <span key={item}>{item}</span>)}</div></section>
-                <section><span className="section-label">近义词</span><div className="word-pills good">{current.synonyms.map((item) => <span key={item}>{item}</span>)}</div></section>
-                <section><span className="section-label">反义词</span><div className="word-pills contrast">{current.antonyms.map((item) => <span key={item}>{item}</span>)}</div></section>
-              </div>
+                  <div className="relation-grid">
+                    <section><span className="section-label">形近词</span><div className="word-pills">{current.similar.map((item) => <span key={item}>{item}</span>)}</div></section>
+                    <section><span className="section-label">近义词</span><div className="word-pills good">{current.synonyms.map((item) => <span key={item}>{item}</span>)}</div></section>
+                    <section><span className="section-label">反义词</span><div className="word-pills contrast">{current.antonyms.map((item) => <span key={item}>{item}</span>)}</div></section>
+                  </div>
 
-              <section className="phrases-section">
-                <span className="section-label">相关口语短语</span>
-                <div className="phrase-list">
-                  {current.phrases.map((item, index) => (
-                    <div key={item.phrase}><b>{String(index + 1).padStart(2, '0')}</b><strong>{item.phrase}</strong><span>{item.meaning}</span><button onClick={() => speak(item.phrase)} aria-label={`播放 ${item.phrase}`}>▶</button></div>
-                  ))}
-                </div>
-              </section>
+                  <section className="phrases-section">
+                    <span className="section-label">相关口语短语</span>
+                    <div className="phrase-list">
+                      {current.phrases.map((item, index) => (
+                        <div key={item.phrase}><b>{String(index + 1).padStart(2, '0')}</b><strong>{item.phrase}</strong><span>{item.meaning}</span><button onClick={() => speak(item.phrase)} aria-label={`播放 ${item.phrase}`}>▶</button></div>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              )}
 
               <div className="card-foot"><span>{known.includes(current.word) ? '✓ 今天已记过' : '左右滑动也可切换'}</span><strong>{currentIndex + 1} / {visibleWords.length}</strong></div>
             </article>
@@ -231,7 +263,7 @@ export default function Home() {
         ) : (
           <div className="list-view">
             <div className="list-head"><span>单词 / 音标</span><span>常用义与口语例句</span><span>词义连接</span><span>状态</span></div>
-            {visibleWords.map((item, index) => (
+            {visibleWords.slice(0, displayLimit).map((item, index) => (
               <article className="word-row" key={item.word}>
                 <div className="row-word">
                   <b>{String(index + 1).padStart(2, '0')}</b>
@@ -240,13 +272,15 @@ export default function Home() {
                 </div>
                 <div className="row-meaning">
                   <strong>{item.meaning}</strong>
-                  <p>{item.example}</p>
-                  <small>{item.translation}</small>
+                  <p>{item.basic ? `使用频率 #${item.rank}` : item.example}</p>
+                  <small>{item.basic ? '基础词条 · 点击单词查看与朗读' : item.translation}</small>
                 </div>
                 <div className="row-links">
-                  <p><b>近</b>{item.synonyms.slice(0, 2).join(' · ')}</p>
-                  <p><b>反</b>{item.antonyms.slice(0, 2).join(' · ')}</p>
-                  <p><b>搭</b>{item.phrases[0].phrase}</p>
+                  {item.basic ? (
+                    <><p><b>级</b>{item.level}</p><p><b>类</b>{item.tags.join(' · ') || '母语扩展'}</p></>
+                  ) : (
+                    <><p><b>近</b>{item.synonyms.slice(0, 2).join(' · ')}</p><p><b>反</b>{item.antonyms.slice(0, 2).join(' · ')}</p><p><b>搭</b>{item.phrases[0]?.phrase}</p></>
+                  )}
                 </div>
                 <div className="row-actions">
                   <button onClick={() => speak(item.word)} aria-label={`播放 ${item.word}`}>▶</button>
@@ -255,14 +289,19 @@ export default function Home() {
                 </div>
               </article>
             ))}
+            {displayLimit < visibleWords.length && (
+              <button className="load-more" onClick={() => setDisplayLimit((value) => value + 120)}>
+                再显示 {Math.min(120, visibleWords.length - displayLimit)} 个
+              </button>
+            )}
           </div>
         )}
       </section>
 
       <aside className="library-strip" aria-label="目标词库构成">
-        <div><span>词库蓝图</span><strong>15,000</strong><small>按美国英语母语者的实用词汇层级规划</small></div>
+        <div><span>当前词库</span><strong>8,000</strong><small>按英语母语环境中的实用频率整理</small></div>
         {libraryStats.map((item) => <div key={item.label}><span>{item.label}</span><strong>{item.count}</strong><small>目标词条</small></div>)}
-        <p>当前为首批精校示范词；结构已支持持续扩充。</p>
+        <p>已收录8,000个基础词条，并保留重点单词的精编口语内容。</p>
       </aside>
     </main>
   );
