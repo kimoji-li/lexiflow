@@ -200,40 +200,61 @@ def primary_synsets(
     return matched[:1] or synsets[:1]
 
 
-def conversational_example(
+def conversational_examples(
     word: str,
     part: str,
     raw_pos: str,
     translation: str,
     exchange: str,
     synsets: list[wn.Synset],
-) -> str:
+) -> list[str]:
+    results: list[str] = []
+
+    def add(value: str) -> None:
+        normalized = re.sub(r"\s+", " ", value).strip()
+        if normalized and normalized not in results:
+            results.append(normalized)
+
     if word in SPECIAL_EXAMPLES:
-        return SPECIAL_EXAMPLES[word]
+        add(SPECIAL_EXAMPLES[word])
     if part == "number":
         if word.endswith(("th", "st", "nd", "rd")):
-            return f"She finished {word} in the race."
-        return f"We need {word} chairs for the event."
+            for value in (
+                f"She finished {word} in the race.",
+                f"This is my {word} visit.",
+                f"He lives on the {word} floor.",
+            ):
+                add(value)
+        else:
+            for value in (
+                f"We need {word} chairs for the event.",
+                f"There were about {word} people outside.",
+                f"I waited for {word} minutes.",
+            ):
+                add(value)
+        return results[:3]
 
     forms = sorted(word_forms(word, exchange), key=len, reverse=True)
     form_pattern = re.compile(
         r"(?<![a-z])(?:" + "|".join(re.escape(form) for form in forms) + r")(?![a-z])",
         re.IGNORECASE,
     )
-    examples = [
+    source_examples = [
         re.sub(r"\s+", " ", example).strip(" .")
         for synset in synsets
         for example in synset.examples()
         if form_pattern.search(example)
     ]
-    examples = [example for example in examples if 2 <= len(example.split()) <= 18]
-    if examples:
-        example = examples[0]
+    source_examples = [example for example in source_examples if 2 <= len(example.split()) <= 18]
+    for example in source_examples:
         if CLAUSE_START_RE.match(example) or CLAUSE_VERB_RE.search(example):
-            return example[0].upper() + example[1:] + ("" if example.endswith((".", "!", "?")) else ".")
-        if part in {"noun", "adjective"}:
-            return f"We talked about {example}."
-        return example[0].upper() + example[1:] + ("" if example.endswith((".", "!", "?")) else ".")
+            add(example[0].upper() + example[1:] + ("" if example.endswith((".", "!", "?")) else "."))
+        elif part in {"noun", "adjective"}:
+            add(f"We talked about {example}.")
+        else:
+            add(example[0].upper() + example[1:] + ("" if example.endswith((".", "!", "?")) else "."))
+        if len(results) == 3:
+            return results
 
     variant = sum(ord(character) for character in word) % 3
     is_transitive = bool(
@@ -250,20 +271,41 @@ def conversational_example(
             f"Can we talk about the {word} for a minute?",
             f"What do you know about the {word}?",
             f"They mentioned the {word} earlier.",
-        ][variant],
-        "verb": verb_fallbacks[variant],
+        ],
+        "verb": verb_fallbacks,
         "adjective": [
-            f"That sounds {word} to me.",
-            f"It seems {word} at first.",
-            f"Why is it so {word}?",
-        ][variant],
+            f"They described it as {word}.",
+            f"That seems {word} to me.",
+            f"It may be the {word} option.",
+        ],
         "adverb": [
             f"They handled the situation {word}.",
             f"Why did it happen {word}?",
             f"She explained it {word}.",
-        ][variant],
+        ],
     }
-    return fallbacks.get(part, f'How would you use "{word}" in a sentence?')
+    options = fallbacks.get(
+        part,
+        [
+            f'I heard someone use "{word}" yesterday.',
+            f'What does "{word}" mean here?',
+            f'Can you use "{word}" in another sentence?',
+        ],
+    )
+    for offset in range(3):
+        add(options[(variant + offset) % len(options)])
+    return results[:3]
+
+
+def example_gloss(word: str, translation: str) -> str:
+    meaning = common_meaning(translation)
+    meaning = re.sub(
+        r"(^|；)(?:n|v|vt|vi|a|adj|adv|prep|conj|pron|num|art|int|aux)\.\s*",
+        r"\1",
+        meaning,
+        flags=re.IGNORECASE,
+    )
+    return f"本句中的 {word} 表示“{meaning}”。"
 
 
 def adjective_relations(
@@ -373,7 +415,7 @@ def main() -> None:
         }
         if ENRICH_START <= rank <= ENRICH_END:
             synsets = primary_synsets(lexicon, word, part, row.get("definition", ""))
-            entry["example"] = conversational_example(
+            examples = conversational_examples(
                 word,
                 part,
                 row.get("pos", ""),
@@ -381,6 +423,9 @@ def main() -> None:
                 row.get("exchange", ""),
                 synsets,
             )
+            gloss = example_gloss(word, row.get("translation", ""))
+            entry["example"] = examples[0]
+            entry["spoken"] = [{"line": line, "meaning": gloss} for line in examples]
             entry["enriched"] = True
             if part == "adjective":
                 synonyms, antonyms = adjective_relations(word, synsets, allowed_words)
