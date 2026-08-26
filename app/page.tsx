@@ -7,9 +7,12 @@ type Mode = 'card' | 'list';
 type Filter = '全部' | '口语高频' | 'IELTS' | '已收藏';
 type BasicWordPayload = Pick<WordEntry, 'word' | 'ipa' | 'part' | 'level' | 'tags' | 'meaning' | 'basic' | 'rank'>
   & Partial<Pick<WordEntry, 'example' | 'spoken' | 'synonyms' | 'antonyms' | 'enriched'>>;
+type LibraryManifest = { total: number; chunkSize: number; chunks: number };
 
 const LIBRARY_SIZE = 25000;
 const LIST_PAGE_SIZE = 120;
+const LIBRARY_LOAD_CONCURRENCY = 4;
+const LIBRARY_LOAD_ATTEMPTS = 4;
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>('card');
@@ -21,6 +24,7 @@ export default function Home() {
   const [known, setKnown] = useState<string[]>([]);
   const [saved, setSaved] = useState<string[]>([]);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
+  const [libraryIncomplete, setLibraryIncomplete] = useState(false);
   const [listPage, setListPage] = useState(0);
   const [listJump, setListJump] = useState('');
   const [jumpedSequence, setJumpedSequence] = useState<number | null>(null);
@@ -35,37 +39,90 @@ export default function Home() {
     setKnown(JSON.parse(localStorage.getItem('lexiflow-known') ?? '[]'));
     setSaved(JSON.parse(localStorage.getItem('lexiflow-saved') ?? '[]'));
     const fromUrl = new URLSearchParams(window.location.search).get('word');
-    const dataUrl = new URL('data/words-basic.json', window.location.href);
-    dataUrl.searchParams.set('library', String(LIBRARY_SIZE));
-    fetch(dataUrl, { cache: 'no-store' })
-      .then((response) => {
-        if (!response.ok) throw new Error(`Unable to load vocabulary: ${response.status}`);
-        return response.json() as Promise<BasicWordPayload[]>;
-      })
-      .then((basicWords) => {
-        const curatedSet = new Set(curatedWords.map((item) => item.word));
-        const normalized = basicWords.map((item): WordEntry => ({
-          ...item,
-          note: '',
-          spoken: item.spoken ?? [],
-          example: item.example ?? '',
-          translation: '',
-          similar: [],
-          synonyms: item.synonyms ?? [],
-          antonyms: item.antonyms ?? [],
-          phrases: [],
-        }));
-        const combined = [
-          ...curatedWords,
-          ...normalized.filter((item) => !curatedSet.has(item.word)).slice(0, LIBRARY_SIZE - curatedWords.length),
-        ];
-        setAllWords(combined);
-        if (fromUrl && combined.some((item) => item.word === fromUrl)) setSelected(fromUrl);
-      })
-      .catch(() => {
+    const pageVersion = new URLSearchParams(window.location.search).get('v') ?? 'mobile-chunks-v1';
+    const dataRoot = new URL('data/words-basic/', window.location.href);
+    const curatedSet = new Set(curatedWords.map((item) => item.word));
+    const loadedChunks = new Map<number, BasicWordPayload[]>();
+    let cancelled = false;
+
+    const fetchJson = async <T,>(url: URL): Promise<T> => {
+      url.searchParams.set('v', pageVersion);
+      let lastError: unknown;
+      for (let attempt = 0; attempt < LIBRARY_LOAD_ATTEMPTS; attempt += 1) {
+        try {
+          const response = await fetch(url, { cache: 'force-cache' });
+          if (!response.ok) throw new Error(`Unable to load vocabulary: ${response.status}`);
+          return await response.json() as T;
+        } catch (error) {
+          lastError = error;
+          if (attempt + 1 < LIBRARY_LOAD_ATTEMPTS) {
+            await new Promise((resolve) => window.setTimeout(resolve, 400 * 2 ** attempt));
+          }
+        }
+      }
+      throw lastError;
+    };
+
+    const publishLoadedChunks = () => {
+      if (cancelled) return;
+      const basicWords = [...loadedChunks.entries()]
+        .sort(([left], [right]) => left - right)
+        .flatMap(([, words]) => words);
+      const normalized = basicWords.map((item): WordEntry => ({
+        ...item,
+        note: '',
+        spoken: item.spoken ?? [],
+        example: item.example ?? '',
+        translation: '',
+        similar: [],
+        synonyms: item.synonyms ?? [],
+        antonyms: item.antonyms ?? [],
+        phrases: [],
+      }));
+      const combined = [
+        ...curatedWords,
+        ...normalized.filter((item) => !curatedSet.has(item.word)).slice(0, LIBRARY_SIZE - curatedWords.length),
+      ];
+      setAllWords(combined);
+      if (fromUrl && combined.some((item) => item.word === fromUrl)) setSelected(fromUrl);
+    };
+
+    void (async () => {
+      try {
+        const manifestUrl = new URL('manifest.json', dataRoot);
+        const manifest = await fetchJson<LibraryManifest>(manifestUrl);
+        let nextChunk = 0;
+        let failedChunks = 0;
+        const worker = async () => {
+          while (!cancelled) {
+            const chunkIndex = nextChunk;
+            nextChunk += 1;
+            if (chunkIndex >= manifest.chunks) return;
+            try {
+              const chunkUrl = new URL(`${String(chunkIndex).padStart(2, '0')}.json`, dataRoot);
+              const words = await fetchJson<BasicWordPayload[]>(chunkUrl);
+              loadedChunks.set(chunkIndex, words);
+              publishLoadedChunks();
+            } catch {
+              failedChunks += 1;
+            }
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(LIBRARY_LOAD_CONCURRENCY, manifest.chunks) }, () => worker()),
+        );
+        if (!cancelled) setLibraryIncomplete(failedChunks > 0 || loadedChunks.size !== manifest.chunks);
+      } catch {
+        if (!cancelled) setLibraryIncomplete(true);
         if (fromUrl && curatedWords.some((item) => item.word === fromUrl)) setSelected(fromUrl);
-      })
-      .finally(() => setLoadingLibrary(false));
+      } finally {
+        if (!cancelled) setLoadingLibrary(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const visibleWords = useMemo(() => {
@@ -211,7 +268,13 @@ export default function Home() {
       <section id="main" className="study-wrap">
         <div className="study-meta">
           <div>
-            <span className="eyebrow">{loadingLibrary ? '正在载入词库' : `${filter === '全部' ? 'DAILY WORDS' : filter.toUpperCase()} · ${visibleWords.length} WORDS`}</span>
+            <span className="eyebrow">{
+              loadingLibrary
+                ? `正在载入词库 · ${allWords.length.toLocaleString()} / ${LIBRARY_SIZE.toLocaleString()}`
+                : libraryIncomplete
+                  ? `已载入 ${allWords.length.toLocaleString()} / ${LIBRARY_SIZE.toLocaleString()} · 刷新可重试`
+                  : `${filter === '全部' ? 'DAILY WORDS' : filter.toUpperCase()} · ${visibleWords.length} WORDS`
+            }</span>
             <h1>{mode === 'card' ? '今天继续，把好词用进对话里。' : '一眼多看，快速建立词义连接。'}</h1>
           </div>
           <div className="mode-switch" aria-label="背诵模式">

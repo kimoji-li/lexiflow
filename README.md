@@ -7,6 +7,7 @@
 - 25,000 个按英语使用频率整理的基础词条
 - 保留重点单词的精编口语用法、例句和短语
 - 第 2,000–10,000 名每词提供三条可朗读英语用例和对应的整句中文翻译；形容词显示可核实的近义词和反义词
+- 25,000 词按 1,000 词一组渐进载入，弱网手机可逐批显示并自动重试
 - 基础数据派生自 [ECDICT](https://github.com/skywind3000/ECDICT)，按 MIT License 使用
 - 词义关系派生自 [Open English WordNet 2024](https://en-word.net/)，按 CC BY 4.0 使用
 - 安装 `wn==1.1.1` 并下载 `oewn:2024` 后，运行 `scripts/generate_basic_words.py /path/to/ecdict.csv` 可重新生成词库

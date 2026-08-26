@@ -14,6 +14,7 @@ import wn
 
 WORD_RE = re.compile(r"^[a-z][a-z'-]{0,23}$")
 TARGET_COUNT = 25_000
+OUTPUT_CHUNK_SIZE = 1_000
 SPOKEN_COUNT = 4_000
 ENRICH_START = 2_000
 ENRICH_END = 10_000
@@ -364,6 +365,7 @@ def main() -> None:
     source = Path(sys.argv[1])
     project = Path(__file__).resolve().parents[1]
     output = project / "public" / "data" / "words-basic.json"
+    chunk_directory = project / "public" / "data" / "words-basic"
     notice = project / "public" / "data" / "NOTICE.txt"
     try:
         lexicon = wn.Wordnet("oewn:2024")
@@ -456,7 +458,27 @@ def main() -> None:
     if len(entries) != TARGET_COUNT:
         raise SystemExit(f"Expected {TARGET_COUNT} entries, got {len(entries)}")
 
-    output.write_text(json.dumps(entries, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    compact_json = lambda value: json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    output.write_text(compact_json(entries), encoding="utf-8")
+    chunk_directory.mkdir(parents=True, exist_ok=True)
+    chunk_count = (len(entries) + OUTPUT_CHUNK_SIZE - 1) // OUTPUT_CHUNK_SIZE
+    for index in range(chunk_count):
+        start = index * OUTPUT_CHUNK_SIZE
+        chunk = entries[start : start + OUTPUT_CHUNK_SIZE]
+        (chunk_directory / f"{index:02d}.json").write_text(
+            compact_json(chunk),
+            encoding="utf-8",
+        )
+    (chunk_directory / "manifest.json").write_text(
+        compact_json(
+            {
+                "total": len(entries),
+                "chunkSize": OUTPUT_CHUNK_SIZE,
+                "chunks": chunk_count,
+            }
+        ),
+        encoding="utf-8",
+    )
     notice.write_text(
         "LexiFlow basic vocabulary data is derived from ECDICT.\n"
         "Source: https://github.com/skywind3000/ECDICT\n"
@@ -466,7 +488,7 @@ def main() -> None:
         "License: Creative Commons Attribution 4.0 International\n",
         encoding="utf-8",
     )
-    print(f"Wrote {len(entries)} entries to {output}")
+    print(f"Wrote {len(entries)} entries to {output} and {chunk_count} mobile chunks")
 
 
 if __name__ == "__main__":
