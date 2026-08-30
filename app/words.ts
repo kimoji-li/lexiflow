@@ -16,6 +16,7 @@ export type WordEntry = {
   basic?: boolean;
   enriched?: boolean;
   rank?: number;
+  ieltsUsage?: { label: string; scene: string };
 };
 
 export const words: WordEntry[] = [
@@ -122,4 +123,3 @@ export const libraryStats = [
   { label: '日常进阶', count: '5,000' },
   { label: '母语扩展', count: '17,000' },
 ];
-

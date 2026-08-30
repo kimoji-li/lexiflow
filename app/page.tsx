@@ -6,7 +6,7 @@ import { libraryStats, words as curatedWords, type WordEntry } from './words';
 type Mode = 'card' | 'list';
 type Filter = '全部' | '口语高频' | 'IELTS' | '已收藏';
 type BasicWordPayload = Pick<WordEntry, 'word' | 'ipa' | 'part' | 'level' | 'tags' | 'meaning' | 'basic' | 'rank'>
-  & Partial<Pick<WordEntry, 'example' | 'spoken' | 'synonyms' | 'antonyms' | 'enriched'>>;
+  & Partial<Pick<WordEntry, 'example' | 'spoken' | 'synonyms' | 'antonyms' | 'enriched' | 'ieltsUsage'>>;
 type LibraryManifest = { total: number; chunkSize: number; chunks: number };
 
 const LIBRARY_SIZE = 25000;
@@ -130,7 +130,7 @@ export default function Home() {
     return allWords.filter((item) => {
       const matchesFilter = filter === '全部'
         || (filter === '已收藏' ? saved.includes(item.word) : item.tags.includes(filter));
-      const haystack = [item.word, item.meaning, item.example, ...item.spoken.flatMap((example) => [example.line, example.meaning]), ...item.synonyms, ...item.phrases.map((p) => p.phrase)].join(' ').toLowerCase();
+      const haystack = [item.word, item.meaning, item.example, item.ieltsUsage?.scene ?? '', ...item.spoken.flatMap((example) => [example.line, example.meaning]), ...item.synonyms, ...item.phrases.map((p) => p.phrase)].join(' ').toLowerCase();
       return matchesFilter && (!text || haystack.includes(text));
     });
   }, [allWords, filter, query, saved]);
@@ -324,22 +324,35 @@ export default function Home() {
               {current.basic ? (
                 current.enriched ? (
                   <>
-                    <section className="basic-speaking">
-                      <div className="basic-speaking-head">
-                        <span className="section-label">常用口语句 · 3</span>
-                        <small>点击句子即可朗读</small>
+                    {current.spoken.length ? (
+                      <section className="basic-speaking">
+                        <div className="basic-speaking-head">
+                          <span className="section-label">真实口语例句 · {current.spoken.length}</span>
+                          <small>点击句子即可朗读</small>
+                        </div>
+                        <div className="basic-example-list">
+                          {current.spoken.map((item, index) => (
+                            <button key={item.line} onClick={() => speak(item.line)} title="点击朗读">
+                              <b>{String(index + 1).padStart(2, '0')}</b>
+                              <strong>“{item.line}”</strong>
+                              <small><i>整句中文</i>{item.meaning}</small>
+                              <span>▶</span>
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    ) : (
+                      <div className="basic-note no-example">
+                        <span>暂无合格双语例句</span>
+                        <p>公开句库中没有筛选到自然且完整的中英对译，本词不使用批量模板凑数。</p>
                       </div>
-                      <div className="basic-example-list">
-                        {current.spoken.map((item, index) => (
-                          <button key={item.line} onClick={() => speak(item.line)} title="点击朗读">
-                            <b>{String(index + 1).padStart(2, '0')}</b>
-                            <strong>“{item.line}”</strong>
-                            <small><i>整句中文</i>{item.meaning}</small>
-                            <span>▶</span>
-                          </button>
-                        ))}
-                      </div>
-                    </section>
+                    )}
+                    {current.ieltsUsage && (
+                      <section className="ielts-usage">
+                        <span className="section-label">{current.ieltsUsage.label}</span>
+                        <p>{current.ieltsUsage.scene}</p>
+                      </section>
+                    )}
                     {current.part === 'adjective' && (
                       <div className="relation-grid basic-relations">
                         <section>
@@ -354,7 +367,7 @@ export default function Home() {
                     )}
                     <div className="basic-note compact">
                       <span>基础词条 · 使用频率 #{current.rank}</span>
-                      <p>第 2,000–10,000 名已补充三条可朗读英语用例和对应的整句中文翻译；词义关系仅显示词典中可核实的结果。</p>
+                      <p>例句来自开放双语句库并经过长度、口语自然度和完整对译筛选；雅思提示与词义关系只在用途明确、可核实的词条中显示。</p>
                     </div>
                   </>
                 ) : (
@@ -443,7 +456,7 @@ export default function Home() {
                 <div className="row-meaning">
                   <strong>{item.meaning}</strong>
                   <p>{item.example || `使用频率 #${item.rank}`}</p>
-                  <small>{item.basic && item.enriched ? `整句中文：${item.spoken[0]?.meaning}` : item.basic ? `使用频率 #${item.rank} · 点击单词查看与朗读` : item.translation}</small>
+                  <small>{item.basic && item.enriched && item.spoken.length ? `整句中文：${item.spoken[0].meaning}` : item.basic && item.enriched ? '暂无筛选合格的中英对译例句' : item.basic ? `使用频率 #${item.rank} · 点击单词查看与朗读` : item.translation}</small>
                 </div>
                 <div className="row-links">
                   {item.basic && item.part === 'adjective' && item.enriched ? (
@@ -453,6 +466,7 @@ export default function Home() {
                   ) : (
                     <><p><b>近</b>{item.synonyms.slice(0, 2).join(' · ')}</p><p><b>反</b>{item.antonyms.slice(0, 2).join(' · ')}</p><p><b>搭</b>{item.phrases[0]?.phrase}</p></>
                   )}
+                  {item.ieltsUsage && <p><b>雅</b>{item.ieltsUsage.label}</p>}
                 </div>
                 <div className="row-actions">
                   <button onClick={() => speak(item.word)} aria-label={`播放 ${item.word}`}>▶</button>
@@ -481,4 +495,3 @@ export default function Home() {
     </main>
   );
 }
-

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Build LexiFlow's compact 25,000-word library from ECDICT and OEWN."""
+"""Build LexiFlow's compact 25,000-word library from vetted open data."""
 
 from __future__ import annotations
 
 import csv
+import gzip
 import json
 import re
 import sys
@@ -107,6 +108,96 @@ SPECIAL_EXAMPLE_SETS = {
         ("We need supplemental funding to finish the project.", "我们需要额外资金才能完成这个项目。"),
     ],
 }
+IELTS_USAGE_GROUPS = (
+    (
+        {
+            "approximately", "considerable", "decrease", "decline", "dramatic",
+            "fluctuate", "gradual", "increase", "marginal", "moderate", "proportion",
+            "rapid", "ratio", "remain", "roughly", "significant", "slight", "stable",
+            "steady", "substantial", "trend",
+        },
+        {
+            "label": "雅思写作 Task 1",
+            "scene": "适合描述图表中的数量、比例或变化趋势；使用时要同时写清比较对象和时间范围。",
+        },
+    ),
+    (
+        {
+            "analysis", "assess", "attribute", "correlation", "demonstrate", "evidence",
+            "evaluate", "hypothesis", "illustrate", "imply", "indicate", "interpret",
+            "phenomenon", "reveal", "statistics", "suggest",
+        },
+        {
+            "label": "雅思写作论证",
+            "scene": "适合引出证据、研究发现或分析结果；不要把可能性写成绝对事实。",
+        },
+    ),
+    (
+        {
+            "alleviate", "barrier", "effective", "efficient", "encourage", "enforce",
+            "facilitate", "feasible", "framework", "hinder", "implement", "incentive",
+            "mitigate", "obstacle", "policy", "promote", "prohibit", "regulate",
+            "restrict", "strategy", "sustainable", "tackle", "viable",
+        },
+        {
+            "label": "雅思写作 Task 2",
+            "scene": "适合讨论解决方案、政策可行性或执行效果；最好配合一个具体措施或结果。",
+        },
+    ),
+    (
+        {
+            "consequence", "contribute", "derive", "exacerbate", "factor", "impact",
+            "influence", "outcome", "stem", "trigger",
+        },
+        {
+            "label": "雅思写作因果链",
+            "scene": "适合解释原因、影响与后果；注意搭配正确介词，并把因果关系写完整。",
+        },
+    ),
+    (
+        {
+            "apparent", "beneficial", "compelling", "complex", "controversial",
+            "crucial", "detrimental", "inevitable", "perspective", "prevalent",
+            "reasonable", "relevant", "remarkable", "sensitive", "subtle", "valid",
+            "vital", "widespread",
+        },
+        {
+            "label": "雅思口语 Part 3 / 写作",
+            "scene": "适合表达较成熟的评价或观点；口语中可用于展开理由，写作中可用于更准确地限定判断。",
+        },
+    ),
+    (
+        {
+            "biodiversity", "carbon", "conservation", "ecosystem", "emission", "habitat",
+            "pollution", "renewable",
+        },
+        {
+            "label": "雅思环境主题",
+            "scene": "常见于环境类口语 Part 3 和写作 Task 2；建议结合污染来源、保护措施或长期影响来使用。",
+        },
+    ),
+    (
+        {
+            "discrimination", "diversity", "elderly", "employment", "globalization",
+            "inequality", "migration", "poverty", "unemployment", "urbanization",
+            "welfare",
+        },
+        {
+            "label": "雅思社会主题",
+            "scene": "常用于社会公平、就业、人口流动或公共服务话题；需要说明受影响的人群和具体背景。",
+        },
+    ),
+    (
+        {
+            "academic", "cognitive", "curriculum", "literacy", "motivation",
+            "scholarship", "vocational",
+        },
+        {
+            "label": "雅思教育主题",
+            "scene": "常用于教育类口语与写作；可结合课程设计、学习效果或教育机会来展开。",
+        },
+    ),
+)
 
 
 def number(value: str) -> int:
@@ -240,11 +331,9 @@ def primary_chinese_meaning(word: str, translation: str, part: str) -> str:
 
 def conversational_examples(
     word: str,
-    part: str,
-    raw_pos: str,
-    translation: str,
+    corpus_examples: dict[str, list[dict[str, object]]],
 ) -> list[tuple[str, str]]:
-    """Return three controlled English examples paired with full Chinese translations."""
+    """Return up to three natural, bilingual examples without template filler."""
     results: list[tuple[str, str]] = []
 
     def add(line: str, meaning: str) -> None:
@@ -257,71 +346,19 @@ def conversational_examples(
         add(line, chinese)
     if word in SPECIAL_EXAMPLES:
         add(*SPECIAL_EXAMPLES[word])
-    meaning = primary_chinese_meaning(word, translation, part)
-    if part == "number":
-        if word.endswith(("th", "st", "nd", "rd")):
-            options = [
-                (f"She finished {word} in the race.", f"她在比赛中获得了{meaning}名。"),
-                (f"This is my {word} visit.", f"这是我{meaning}次来。"),
-                (f"He lives on the {word} floor.", f"他住在{meaning}层。"),
-            ]
-        else:
-            options = [
-                (f"We need {word} chairs for the event.", f"这场活动需要{meaning}把椅子。"),
-                (f"There were about {word} people outside.", f"外面大约有{meaning}个人。"),
-                (f"I waited for {word} minutes.", f"我等了{meaning}分钟。"),
-            ]
-        for line, chinese in options:
-            add(line, chinese)
-        return results[:3]
-
-    variant = sum(ord(character) for character in word) % 3
-    is_transitive = bool(
-        re.search(r"(?:^|/)vt(?::|/|$)", raw_pos.lower())
-        or re.search(r"(?:^|\n)vt\.", translation.replace("\\n", "\n").lower())
-    )
-    verb_fallbacks = (
-        [
-            (f"Can you {word} this?", f"你能{meaning}这个吗？"),
-            (f"Why did they {word} it?", f"他们为什么要{meaning}它？"),
-            (f"We need to {word} this first.", f"我们需要先{meaning}这个。"),
-        ]
-        if is_transitive
-        else [
-            (f"Why did they {word}?", f"他们为什么{meaning}？"),
-            (f"Do you think they will {word}?", f"你觉得他们会{meaning}吗？"),
-            (f"We may have to {word} soon.", f"我们可能很快就得{meaning}。"),
-        ]
-    )
-    fallbacks = {
-        "noun": [
-            (f"Can we talk about the {word} for a minute?", f"我们能聊一下“{meaning}”吗？"),
-            (f"What do you know about the {word}?", f"关于“{meaning}”，你了解多少？"),
-            (f"They mentioned the {word} earlier.", f"他们刚才提到了“{meaning}”。"),
-        ],
-        "verb": verb_fallbacks,
-        "adjective": [
-            (f"They described it as {word}.", f"他们把它描述为“{meaning}”。"),
-            (f"That seems {word} to me.", f"在我看来，那似乎是“{meaning}”。"),
-            (f"It may be the {word} option.", f"它可能是那个“{meaning}”选项。"),
-        ],
-        "adverb": [
-            (f"They handled the situation {word}.", f"他们以“{meaning}”的方式处理了这种情况。"),
-            (f"Why did it happen {word}?", f"为什么事情会以“{meaning}”的方式发生？"),
-            (f"She explained it {word}.", f"她以“{meaning}”的方式解释了这件事。"),
-        ],
-    }
-    options = fallbacks.get(
-        part,
-        [
-            (f'I heard someone use "{word}" yesterday.', f'我昨天听到有人使用“{word}”这个词。'),
-            (f'What does "{word}" mean here?', f'“{word}”在这里是什么意思？'),
-            (f'Can you use "{word}" in another sentence?', f'你能在另一个句子里使用“{word}”吗？'),
-        ],
-    )
-    for offset in range(3):
-        add(*options[(variant + offset) % len(options)])
+    for item in corpus_examples.get(word, []):
+        add(str(item.get("line", "")), str(item.get("meaning", "")))
     return results[:3]
+
+
+def ielts_usage_for(word: str, tags: list[str]) -> dict[str, str] | None:
+    """Return a conservative IELTS note only for clearly useful vocabulary."""
+    if "IELTS" not in tags:
+        return None
+    for words, usage in IELTS_USAGE_GROUPS:
+        if word in words:
+            return usage
+    return None
 
 
 def adjective_relations(
@@ -367,6 +404,14 @@ def main() -> None:
     output = project / "public" / "data" / "words-basic.json"
     chunk_directory = project / "public" / "data" / "words-basic"
     notice = project / "public" / "data" / "NOTICE.txt"
+    corpus_path = project / "data" / "spoken_examples.json.gz"
+    if not corpus_path.exists():
+        raise SystemExit(
+            "Missing data/spoken_examples.json.gz. Run scripts/build_tatoeba_examples.py first."
+        )
+    with gzip.open(corpus_path, "rt", encoding="utf-8") as compressed:
+        corpus_payload = json.load(compressed)
+    corpus_examples: dict[str, list[dict[str, object]]] = corpus_payload["examples"]
     try:
         lexicon = wn.Wordnet("oewn:2024")
     except wn.Error as exc:
@@ -437,16 +482,16 @@ def main() -> None:
             synsets = primary_synsets(lexicon, word, part, row.get("definition", ""))
             examples = conversational_examples(
                 word,
-                part,
-                row.get("pos", ""),
-                row.get("translation", ""),
+                corpus_examples,
             )
-            entry["example"] = examples[0][0]
+            entry["example"] = examples[0][0] if examples else ""
             entry["spoken"] = [
                 {"line": line, "meaning": chinese}
                 for line, chinese in examples
             ]
             entry["enriched"] = True
+            if ielts_usage := ielts_usage_for(word, tags):
+                entry["ieltsUsage"] = ielts_usage
             if part == "adjective":
                 synonyms, antonyms = adjective_relations(word, synsets, allowed_words)
                 entry["synonyms"] = synonyms
@@ -485,7 +530,10 @@ def main() -> None:
         "License: MIT License, Copyright (c) 2025 Linwei\n\n"
         "LexiFlow lexical relations are derived from Open English WordNet 2024.\n"
         "Source: https://en-word.net/\n"
-        "License: Creative Commons Attribution 4.0 International\n",
+        "License: Creative Commons Attribution 4.0 International\n\n"
+        "LexiFlow bilingual example sentences are selected from Tatoeba.\n"
+        "Source: https://tatoeba.org/\n"
+        "License: Creative Commons Attribution 2.0 France\n",
         encoding="utf-8",
     )
     print(f"Wrote {len(entries)} entries to {output} and {chunk_count} mobile chunks")
@@ -493,4 +541,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -6,3 +6,6 @@ LexiFlow lexical relations are derived from Open English WordNet 2024.
 Source: https://en-word.net/
 License: Creative Commons Attribution 4.0 International
 
+LexiFlow bilingual example sentences are selected from Tatoeba.
+Source: https://tatoeba.org/
+License: Creative Commons Attribution 2.0 France
