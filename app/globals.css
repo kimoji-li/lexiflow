@@ -85,6 +85,21 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .ielts-usage p { margin: 9px 0 0; color: var(--ink); font-size: 13px; line-height: 1.7; }
 .basic-relations { grid-template-columns: repeat(2, 1fr); }
 .basic-relations section > small { display: block; margin-top: 12px; color: var(--muted); font-size: 11px; }
+.frequency-bar { margin-top: 25px; padding: 15px 20px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 14px; background: var(--accent-soft); display: flex; align-items: center; gap: 16px; }
+.frequency-bar .section-label { flex: 0 0 auto; }
+.frequency-bar p { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.5; }
+.sense-block { margin-top: 27px; }
+.sense-list { list-style: none; margin: 13px 0 0; padding: 0; display: grid; gap: 9px; }
+.sense-list li { display: flex; align-items: baseline; gap: 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--soft); padding: 13px 16px; }
+.sense-list b { color: var(--muted); font-size: 10px; font-weight: 800; min-width: 32px; }
+.sense-list strong { font-size: 15px; font-weight: 650; }
+.tip-block { margin-top: 24px; min-width: 0; max-width: 100%; }
+.tip-item { border: 1px solid color-mix(in srgb, var(--green) 30%, var(--line)); border-left: 3px solid var(--green); border-radius: 0 12px 12px 0; background: var(--green-soft); padding: 14px 18px; min-width: 0; max-width: 100%; margin-bottom: 10px; }
+.tip-item:last-child { margin-bottom: 0; }
+.tip-item span { font-size: 11px; font-weight: 800; color: var(--green); }
+.tip-item p { margin: 7px 0 0; width: 100%; font-size: 13px; line-height: 1.65; overflow-wrap: break-word; word-break: break-word; }
+.derivative-block { margin-top: 27px; min-width: 0; }
+.frequency-bar p, .sense-list strong { overflow-wrap: break-word; word-break: break-word; }
 blockquote { margin: 28px 0 0; background: var(--soft); border-left: 3px solid var(--accent); border-radius: 0 13px 13px 0; padding: 19px 22px; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(17px, 2.5vw, 20px); line-height: 1.55; }
 blockquote span { display: block; color: var(--muted); font-family: Arial, sans-serif; font-size: 12px; margin-top: 6px; }
 .spoken-note { display: grid; grid-template-columns: 108px 1fr; margin-top: 27px; padding: 0 3px; gap: 16px; }

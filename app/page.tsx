@@ -6,7 +6,7 @@ import { libraryStats, words as curatedWords, type WordEntry } from './words';
 type Mode = 'card' | 'list';
 type Filter = '全部' | '口语高频' | 'IELTS' | '已收藏';
 type BasicWordPayload = Pick<WordEntry, 'word' | 'ipa' | 'part' | 'level' | 'tags' | 'meaning' | 'basic' | 'rank'>
-  & Partial<Pick<WordEntry, 'example' | 'spoken' | 'synonyms' | 'antonyms' | 'enriched' | 'ieltsUsage'>>;
+  & Partial<Pick<WordEntry, 'example' | 'spoken' | 'synonyms' | 'antonyms' | 'enriched' | 'ieltsUsage' | 'frequency' | 'senses' | 'tips' | 'derivatives'>>;
 type LibraryManifest = { total: number; chunkSize: number; chunks: number };
 
 const LIBRARY_SIZE = 25000;
@@ -78,6 +78,9 @@ export default function Home() {
         synonyms: item.synonyms ?? [],
         antonyms: item.antonyms ?? [],
         phrases: [],
+        senses: item.senses ?? [],
+        tips: item.tips ?? [],
+        derivatives: item.derivatives ?? [],
       }));
       const combined = [
         ...curatedWords,
@@ -324,6 +327,27 @@ export default function Home() {
               {current.basic ? (
                 current.enriched ? (
                   <>
+                    {current.frequency && (
+                      <section className="frequency-bar">
+                        <span className="section-label">口语常用程度</span>
+                        <p>{current.frequency.text}</p>
+                      </section>
+                    )}
+
+                    {current.senses && current.senses.length > 0 && (
+                      <section className="sense-block">
+                        <span className="section-label">口语用法</span>
+                        <ol className="sense-list">
+                          {current.senses.map((item, index) => (
+                            <li key={`${item.gloss}-${index}`}>
+                              <b>{item.pos}</b>
+                              <strong>{index + 1}. {item.gloss}</strong>
+                            </li>
+                          ))}
+                        </ol>
+                      </section>
+                    )}
+
                     {current.spoken.length ? (
                       <section className="basic-speaking">
                         <div className="basic-speaking-head">
@@ -347,27 +371,46 @@ export default function Home() {
                         <p>公开句库中没有筛选到自然且完整的中英对译，本词不使用批量模板凑数。</p>
                       </div>
                     )}
+
+                    {current.tips && current.tips.length > 0 && (
+                      <section className="tip-block">
+                        {current.tips.map((tip, index) => (
+                          <div className="tip-item" key={index}>
+                            <span>{tip.type === 'homophone' ? '⚠ 同音词提示' : '💡 口语提示'}</span>
+                            <p>{tip.text}</p>
+                          </div>
+                        ))}
+                      </section>
+                    )}
+
+                    {current.derivatives && current.derivatives.length > 0 && (
+                      <section className="derivative-block">
+                        <span className="section-label">派生词</span>
+                        <div className="word-pills">{current.derivatives.map((item) => <span key={item}>{item}</span>)}</div>
+                      </section>
+                    )}
+
+                    <div className="relation-grid basic-relations">
+                      <section>
+                        <span className="section-label">近义词</span>
+                        {current.synonyms.length ? <div className="word-pills good">{current.synonyms.map((item) => <span key={item}>{item}</span>)}</div> : <small>暂无可靠近义词</small>}
+                      </section>
+                      <section>
+                        <span className="section-label">反义词</span>
+                        {current.antonyms.length ? <div className="word-pills contrast">{current.antonyms.map((item) => <span key={item}>{item}</span>)}</div> : <small>暂无可靠反义词</small>}
+                      </section>
+                    </div>
+
                     {current.ieltsUsage && (
                       <section className="ielts-usage">
                         <span className="section-label">{current.ieltsUsage.label}</span>
                         <p>{current.ieltsUsage.scene}</p>
                       </section>
                     )}
-                    {current.part === 'adjective' && (
-                      <div className="relation-grid basic-relations">
-                        <section>
-                          <span className="section-label">近义词</span>
-                          {current.synonyms.length ? <div className="word-pills good">{current.synonyms.map((item) => <span key={item}>{item}</span>)}</div> : <small>暂无可靠近义词</small>}
-                        </section>
-                        <section>
-                          <span className="section-label">反义词</span>
-                          {current.antonyms.length ? <div className="word-pills contrast">{current.antonyms.map((item) => <span key={item}>{item}</span>)}</div> : <small>暂无可靠反义词</small>}
-                        </section>
-                      </div>
-                    )}
+
                     <div className="basic-note compact">
                       <span>基础词条 · 使用频率 #{current.rank}</span>
-                      <p>例句来自开放双语句库并经过长度、口语自然度和完整对译筛选；雅思提示与词义关系只在用途明确、可核实的词条中显示。</p>
+                      <p>口语程度按频率分档；场景、近义/反义、派生词来自开放词库；例句来自开放双语句库并经口语自然度筛选，没有合格内容时不使用模板凑数。</p>
                     </div>
                   </>
                 ) : (

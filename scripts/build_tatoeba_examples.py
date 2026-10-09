@@ -19,8 +19,8 @@ from collections import defaultdict
 from pathlib import Path
 
 
-ENRICH_START = 2_000
-ENRICH_END = 10_000
+ENRICH_START = 1
+ENRICH_END = 15_000
 MAX_CANDIDATES = 12
 TOKEN_RE = re.compile(r"[A-Za-z]+(?:['-][A-Za-z]+)*")
 URL_RE = re.compile(r"(?:https?://|www\.|\S+@\S+)", re.IGNORECASE)
@@ -69,8 +69,8 @@ def load_target_words(project: Path) -> dict[str, str]:
             rank = int(entry.get("rank", 0))
             if ENRICH_START <= rank <= ENRICH_END:
                 targets[str(entry["word"]).lower()] = str(entry.get("part", "word"))
-    if len(targets) < 7_500:
-        raise SystemExit(f"Expected about 8,001 target words, found {len(targets)}")
+    if len(targets) < 14_000:
+        raise SystemExit(f"Expected about 15,000 target words, found {len(targets)}")
     return targets
 
 

@@ -13,6 +13,10 @@ export type WordEntry = {
   synonyms: string[];
   antonyms: string[];
   phrases: { phrase: string; meaning: string }[];
+  frequency?: { band: string; scenes: string[]; text: string };
+  senses?: { pos: string; gloss: string }[];
+  tips?: { type: string; text: string }[];
+  derivatives?: string[];
   basic?: boolean;
   enriched?: boolean;
   rank?: number;

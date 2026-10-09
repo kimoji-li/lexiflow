@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Build LexiFlow's compact 25,000-word library from vetted open data."""
+"""Build LexiFlow's compact library with spoken-usage data from vetted open data.
+
+New per-word fields (ranks 1-15,000), all deterministically derived:
+  frequency    {band, scenes, text}  spoken-frequency band + usage scenes
+  senses       [{pos, gloss}]        short Chinese senses split from ECDICT
+  tips         [{type, text}]        homophone warnings (e.g. knead / need)
+  derivatives  [str]                 WordNet derivations (wordness, electricity)
+  synonyms     [str]                 all parts of speech (was adjectives only)
+  antonyms     [str]                 all parts of speech
+Sources: ECDICT (MIT), Open English WordNet 2024 (CC BY 4.0), Tatoeba (CC BY 2.0 FR).
+"""
 
 from __future__ import annotations
 
@@ -17,18 +27,19 @@ WORD_RE = re.compile(r"^[a-z][a-z'-]{0,23}$")
 TARGET_COUNT = 25_000
 OUTPUT_CHUNK_SIZE = 1_000
 SPOKEN_COUNT = 4_000
-ENRICH_START = 2_000
-ENRICH_END = 10_000
+SPOKEN_ENRICH_START = 1
+SPOKEN_ENRICH_END = 15_000
+WORDNET_ENRICH_END = 15_000
 POS_NAMES = {
     "n": "noun",
     "v": "verb",
     "vt": "verb",
     "vi": "verb",
+    "r": "adverb",
+    "adv": "adverb",
     "a": "adjective",
     "s": "adjective",
     "adj": "adjective",
-    "r": "adverb",
-    "adv": "adverb",
     "prep": "preposition",
     "conj": "conjunction",
     "pron": "pronoun",
@@ -38,11 +49,72 @@ POS_NAMES = {
     "interj": "interjection",
     "aux": "auxiliary",
 }
+POS_ABBREV = {
+    "noun": "n.",
+    "verb": "v.",
+    "adjective": "adj.",
+    "adverb": "adv.",
+    "preposition": "prep.",
+    "conjunction": "conj.",
+    "pronoun": "pron.",
+    "number": "num.",
+    "article": "art.",
+    "interjection": "int.",
+    "auxiliary": "aux.",
+    "word": "",
+}
 WN_POS = {
     "noun": ("n",),
     "verb": ("v",),
     "adjective": ("a", "s"),
     "adverb": ("r",),
+}
+# WordNet lexicographer file -> Chinese usage scenes.
+LEXFILE_SCENES = {
+    "noun.tops": ("通用",),
+    "noun.act": ("行为", "动作"),
+    "noun.animal": ("动物",),
+    "noun.artifact": ("物品", "器具"),
+    "noun.attribute": ("特征", "属性"),
+    "noun.body": ("身体", "生理"),
+    "noun.cognition": ("认知", "思考"),
+    "noun.communication": ("交流", "表达"),
+    "noun.event": ("事件", "情况"),
+    "noun.feeling": ("情感", "感受"),
+    "noun.food": ("饮食",),
+    "noun.group": ("群体",),
+    "noun.location": ("地点", "位置"),
+    "noun.motive": ("动机", "目的"),
+    "noun.object": ("物体",),
+    "noun.person": ("人物",),
+    "noun.phenomenon": ("现象", "自然"),
+    "noun.plant": ("植物",),
+    "noun.possession": ("财物",),
+    "noun.process": ("过程",),
+    "noun.quantity": ("数量",),
+    "noun.relation": ("关系",),
+    "noun.shape": ("形状", "外观"),
+    "noun.state": ("状态",),
+    "noun.substance": ("物质", "材料"),
+    "noun.time": ("时间",),
+    "verb.body": ("身体动作", "护理"),
+    "verb.change": ("变化",),
+    "verb.cognition": ("思考", "认知"),
+    "verb.communication": ("交流", "表达"),
+    "verb.competition": ("竞争", "对抗"),
+    "verb.consumption": ("饮食", "消耗"),
+    "verb.contact": ("接触", "揉按"),
+    "verb.creation": ("创造", "制作"),
+    "verb.emotion": ("情感", "情绪"),
+    "verb.motion": ("移动", "行动"),
+    "verb.perception": ("感知", "观察"),
+    "verb.possession": ("拥有", "支配"),
+    "verb.social": ("社交", "人际"),
+    "verb.stative": ("状态",),
+    "verb.weather": ("天气",),
+    "adj.all": ("描述",),
+    "adj.pert": ("描述", "关联"),
+    "adv.all": ("方式", "程度"),
 }
 SPECIAL_EXAMPLES = {
     "via": ("I sent it via email.", "我是通过电子邮件把它发出去的。"),
@@ -252,8 +324,32 @@ def level_for(rank: int) -> str:
     return "C2"
 
 
+def frequency_band(rank: int) -> str:
+    if rank <= 1500:
+        return "极高频"
+    if rank <= 3000:
+        return "高频"
+    if rank <= 5000:
+        return "中高频"
+    if rank <= 7000:
+        return "中频"
+    if rank <= 10000:
+        return "中低频"
+    if rank <= 15000:
+        return "低频"
+    return "罕用"
+
+
 def normalized_gloss(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def normalize_ipa(ipa: str) -> str:
+    """Strip stress marks, length marks and separators to group homophones."""
+    text = ipa.strip().strip("/")
+    for char in ("ˈ", "ˌ", ".", " ", "ː", "ˈ"):
+        text = text.replace(char, "")
+    return text
 
 
 def definition_lines(value: str, part: str) -> list[str]:
@@ -264,7 +360,7 @@ def definition_lines(value: str, part: str) -> list[str]:
         "adverb": {"r"},
     }.get(part, set())
     results: list[str] = []
-    normalized = value.replace("\\r", "").replace("\\n", "\n")
+    normalized = value.replace("\\r", "").replace("\r", "").replace("\\n", "\n")
     for raw in normalized.splitlines():
         match = re.match(r"^([a-z]+)\.?\s+(.+)$", raw.strip(), re.IGNORECASE)
         if match and match.group(1).lower() in markers:
@@ -277,6 +373,7 @@ def primary_synsets(
     word: str,
     part: str,
     definition: str,
+    limit: int = 2,
 ) -> list[wn.Synset]:
     synsets = [
         synset
@@ -285,14 +382,27 @@ def primary_synsets(
     ]
     if not synsets:
         return []
-
     by_gloss = {normalized_gloss(synset.definition()): synset for synset in synsets}
     matched = [
         by_gloss[key]
         for line in definition_lines(definition, part)
         if (key := normalized_gloss(line)) in by_gloss
     ]
-    return matched[:1] or synsets[:1]
+    chosen: list[wn.Synset] = []
+    for synset in matched + synsets:
+        if synset not in chosen:
+            chosen.append(synset)
+        if len(chosen) == limit:
+            break
+    return chosen
+
+
+def all_synsets(lexicon: wn.Wordnet, word: str, part: str) -> list[wn.Synset]:
+    return [
+        synset
+        for pos in WN_POS.get(part, ())
+        for synset in lexicon.synsets(word, pos=pos)
+    ]
 
 
 def primary_chinese_meaning(word: str, translation: str, part: str) -> str:
@@ -329,6 +439,67 @@ def primary_chinese_meaning(word: str, translation: str, part: str) -> str:
     return common_meaning(translation) or "这个词"
 
 
+def split_senses(translation: str, fallback_part: str, max_senses: int = 6) -> list[dict[str, str]]:
+    """Split ECDICT Chinese gloss into short senses tagged with part of speech."""
+    normalized = translation.replace("\\r", "").replace("\r", "").replace("\\n", "\n")
+    senses: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for raw in normalized.splitlines():
+        line = raw.strip()
+        if line.startswith("[网络") or line.startswith("["):
+            continue
+        match = re.match(
+            r"^(n|v|vt|vi|a|adj|ad|adv|prep|conj|pron|num|art|int|aux)\.\s*(.+)$",
+            line,
+            re.IGNORECASE,
+        )
+        if match:
+            pos_name = POS_NAMES.get(match.group(1).lower(), "word")
+            body = match.group(2)
+        else:
+            pos_name = fallback_part
+            body = line
+        for chunk in re.split(r"[;；]", body):
+            pieces = [
+                re.sub(r"^[^\u3400-\u9fff]+", "", re.sub(r"\s+", " ", p).strip(" ,，.。"))
+                for p in re.split(r"[,，]", chunk)
+            ]
+            pieces = [p for p in pieces if p]
+            gloss = "、".join(pieces[:3])
+            if not gloss or len(gloss) > 18 or gloss in seen:
+                continue
+            seen.add(gloss)
+            abbrev = POS_ABBREV.get(pos_name, "")
+            senses.append({"pos": abbrev, "gloss": gloss})
+            if len(senses) == max_senses:
+                return senses
+    return senses
+
+
+def scenes_for_synsets(synsets: list[wn.Synset], limit: int = 2) -> list[str]:
+    scenes: list[str] = []
+    for synset in synsets:
+        lexfile = ""
+        try:
+            lexfile = synset.lexfile()
+        except Exception:
+            lexfile = ""
+        for scene in LEXFILE_SCENES.get(lexfile.lower(), ()):
+            if scene not in scenes:
+                scenes.append(scene)
+        if len(scenes) >= limit:
+            break
+    return scenes[:limit]
+
+
+def frequency_text(band: str, scenes: list[str]) -> str:
+    if scenes:
+        return f"{band}，{'、'.join(scenes)}场景多见"
+    if band == "极高频":
+        return "极高频，日常对话核心词"
+    return band
+
+
 def conversational_examples(
     word: str,
     corpus_examples: dict[str, list[dict[str, object]]],
@@ -361,24 +532,26 @@ def ielts_usage_for(word: str, tags: list[str]) -> dict[str, str] | None:
     return None
 
 
-def adjective_relations(
+def word_relations(
     word: str,
     synsets: list[wn.Synset],
     allowed_words: set[str],
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str]]:
     synonyms: list[str] = []
     antonyms: list[str] = []
+    derivatives: list[str] = []
     for synset in synsets:
-        synonyms.extend(lemma.replace("_", " ") for lemma in synset.lemmas())
+        for lemma in synset.lemmas():
+            synonyms.append(lemma.replace("_", " "))
         for sense in synset.senses():
             if sense.word().lemma().lower() != word:
                 continue
-            antonyms.extend(
-                target.word().lemma().replace("_", " ")
-                for target in sense.get_related("antonym")
-            )
+            for target in sense.get_related("antonym"):
+                antonyms.append(target.word().lemma().replace("_", " "))
+            for target in sense.get_related("derivation"):
+                derivatives.append(target.word().lemma().replace("_", " "))
 
-    def clean(values: list[str]) -> list[str]:
+    def clean(values: list[str], cap: int) -> list[str]:
         unique: list[str] = []
         for value in values:
             normalized = value.lower().strip()
@@ -390,9 +563,9 @@ def adjective_relations(
             ):
                 continue
             unique.append(normalized)
-        return unique[:3]
+        return unique[:cap]
 
-    return clean(synonyms), clean(antonyms)
+    return clean(synonyms, 4), clean(antonyms, 3), clean(derivatives, 4)
 
 
 def main() -> None:
@@ -446,13 +619,28 @@ def main() -> None:
     selected = candidates[: TARGET_COUNT + 1000]
     allowed_words = {row["word"].strip() for _, row in selected}
 
-    entries: list[dict[str, object]] = []
+    # First pass: ordered entries and an IPA index for homophone detection.
+    ordered_rows: list[dict[str, str]] = []
     seen: set[str] = set()
     for _, row in selected:
         word = row["word"].strip()
         if word in seen:
             continue
         seen.add(word)
+        ordered_rows.append(row)
+        if len(ordered_rows) == TARGET_COUNT:
+            break
+
+    ipa_index: dict[str, list[str]] = {}
+    for row in ordered_rows:
+        phonetic = row.get("phonetic", "").strip()
+        if phonetic:
+            key = normalize_ipa(phonetic)
+            ipa_index.setdefault(key, []).append(row["word"].strip())
+
+    entries: list[dict[str, object]] = []
+    for row in ordered_rows:
+        word = row["word"].strip()
         rank = len(entries) + 1
         source_tags = row.get("tag", "").lower().split()
         tags: list[str] = []
@@ -478,27 +666,53 @@ def main() -> None:
             "rank": rank,
             "basic": True,
         }
-        if ENRICH_START <= rank <= ENRICH_END:
-            synsets = primary_synsets(lexicon, word, part, row.get("definition", ""))
-            examples = conversational_examples(
-                word,
-                corpus_examples,
-            )
-            entry["example"] = examples[0][0] if examples else ""
-            entry["spoken"] = [
-                {"line": line, "meaning": chinese}
-                for line, chinese in examples
-            ]
+
+        # WordNet-derived spoken-usage data for ranks 1-15,000.
+        if rank <= WORDNET_ENRICH_END:
+            synsets = all_synsets(lexicon, word, part)
+            primary = primary_synsets(lexicon, word, part, row.get("definition", ""))
+            scenes = scenes_for_synsets(synsets)
+            band = frequency_band(rank)
+            entry["frequency"] = {
+                "band": band,
+                "scenes": scenes,
+                "text": frequency_text(band, scenes),
+            }
+            entry["senses"] = split_senses(row.get("translation", ""), part)
+            synonyms, antonyms, derivatives = word_relations(word, synsets, allowed_words)
+            entry["synonyms"] = synonyms
+            entry["antonyms"] = antonyms
+            entry["derivatives"] = derivatives
             entry["enriched"] = True
+
+            # Homophone tip from the global IPA index.
+            phonetic = row.get("phonetic", "").strip()
+            if phonetic:
+                peers = [peer for peer in ipa_index.get(normalize_ipa(phonetic), []) if peer != word]
+                if peers:
+                    peer = peers[0]
+                    peer_row = next((r for r in ordered_rows if r["word"].strip() == peer), None)
+                    peer_meaning = (
+                        primary_chinese_meaning(peer, peer_row.get("translation", ""), "word")
+                        if peer_row else ""
+                    )
+                    own_meaning = primary_chinese_meaning(word, row.get("translation", ""), part)
+                    text = (
+                        f"发音和 {peer} 完全同音，只能靠上下文区分：{word} 指{own_meaning}，"
+                        f"{peer} 指{peer_meaning}。"
+                    )
+                    entry["tips"] = [{"type": "homophone", "text": text}]
+
+            examples = conversational_examples(word, corpus_examples)
+            if examples:
+                entry["example"] = examples[0][0]
+                entry["spoken"] = [
+                    {"line": line, "meaning": chinese}
+                    for line, chinese in examples
+                ]
             if ielts_usage := ielts_usage_for(word, tags):
                 entry["ieltsUsage"] = ielts_usage
-            if part == "adjective":
-                synonyms, antonyms = adjective_relations(word, synsets, allowed_words)
-                entry["synonyms"] = synonyms
-                entry["antonyms"] = antonyms
         entries.append(entry)
-        if len(entries) == TARGET_COUNT:
-            break
 
     if len(entries) != TARGET_COUNT:
         raise SystemExit(f"Expected {TARGET_COUNT} entries, got {len(entries)}")
@@ -536,7 +750,13 @@ def main() -> None:
         "License: Creative Commons Attribution 2.0 France\n",
         encoding="utf-8",
     )
-    print(f"Wrote {len(entries)} entries to {output} and {chunk_count} mobile chunks")
+    enriched = sum(1 for entry in entries if entry.get("enriched"))
+    with_examples = sum(1 for entry in entries if entry.get("spoken"))
+    with_homophones = sum(1 for entry in entries if entry.get("tips"))
+    print(
+        f"Wrote {len(entries)} entries ({enriched} enriched, {with_examples} with examples, "
+        f"{with_homophones} with homophone tips) and {chunk_count} chunks"
+    )
 
 
 if __name__ == "__main__":
